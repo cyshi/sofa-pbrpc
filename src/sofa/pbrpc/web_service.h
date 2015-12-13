@@ -36,6 +36,14 @@ public:
         const RpcServerStreamWPtr& server_stream);
 
 private:
+    typedef std::map<std::string, std::string> QueryParams;
+    enum API
+    {
+        TABLE,
+        CHART
+    };
+
+private:
     Servlet FindServlet(const std::string& path);
 
     bool DefaultHome(const HTTPRequest& request, HTTPResponse& response);
@@ -47,6 +55,12 @@ private:
     bool DefaultServices(const HTTPRequest& request, HTTPResponse& response);
 
     bool DefaultService(const HTTPRequest& request, HTTPResponse& response);
+
+    bool DefaultAjaxApi(const HTTPRequest& request, HTTPResponse& response);
+
+    bool GetChartData(const HTTPRequest& request, HTTPResponse& response);
+
+    bool GetTableData(const HTTPRequest& request, HTTPResponse& response);
 
     static void PageHeader(std::ostream& out);
     
@@ -67,6 +81,9 @@ private:
 
     static void MethodList(std::ostream& out,
                            ServiceBoard* svc_board);
+
+    static void MethodDetail(std::ostream& out, 
+                             ServiceBoard* svc_board);
 
     static void ErrorPage(std::ostream& out, 
                           const std::string& reason);
@@ -90,6 +107,7 @@ private:
     Servlet _default_status;
     Servlet _default_services;
     Servlet _default_service;
+    Servlet _default_ajaxapi;
 
     SOFA_PBRPC_DISALLOW_EVIL_CONSTRUCTORS(WebService);
 };

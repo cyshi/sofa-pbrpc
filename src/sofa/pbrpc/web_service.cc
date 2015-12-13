@@ -82,6 +82,9 @@ WebService::~WebService()
 
     delete _default_service;
     _default_service = NULL;
+
+    delete _default_ajaxapi;
+    _default_ajaxapi = NULL;
 }
 
 void WebService::Init()
@@ -107,6 +110,10 @@ void WebService::Init()
     _default_service = 
         sofa::pbrpc::NewPermanentExtClosure(this, &WebService::DefaultService);
     RegisterServlet("/service", _default_service);
+
+    _default_ajaxapi = 
+        sofa::pbrpc::NewPermanentExtClosure(this, &WebService::DefaultAjaxApi);
+    RegisterServlet("/ajaxapi", _default_ajaxapi);
 }
 
 void WebService::RegisterServlet(const std::string& path, Servlet servlet)
@@ -255,19 +262,20 @@ bool WebService::DefaultServices(const HTTPRequest& /*request*/,
 bool WebService::DefaultService(const HTTPRequest& request, 
                                 HTTPResponse& response)
 {
-    ServicePoolPtr service_pool = _service_pool.lock();
-    if (!service_pool)
-    {
-        return false;
-    }
     std::ostringstream oss;
-    if (request.query_params.find("name") == request.query_params.end())
+    QueryParams::const_iterator it = request.query_params.find("name"); 
+    if (it == request.query_params.end())
     {
         ErrorPage(oss, "Lack of name param");
         response.content = oss.str();
         return true;
     }
-    const std::string& name = request.query_params.find("name")->second;
+    const std::string& name = it->second;
+    ServicePoolPtr service_pool = _service_pool.lock();
+    if (!service_pool)
+    {
+        return false;
+    }
     ServiceBoard* svc_board = service_pool->FindService(name);
     if (svc_board == NULL)
     {
@@ -283,6 +291,32 @@ bool WebService::DefaultService(const HTTPRequest& request,
     PageFooter(oss);
     response.content = oss.str();
     return true;
+}
+
+bool WebService::DefaultAjaxApi(const HTTPRequest& request, HTTPResponse& response)
+{
+    QueryParams::const_iterator it = request.query_params.find("api");
+    if (it == request.query_params.end())
+    {
+        return false;
+    }
+
+    std::stringstream ss;
+    ss << it->second;
+    int api = -1;
+    ss >> api;
+    if (api == TABLE)
+    {
+        return GetTableData(request, response);
+    }
+    else if (api == CHART)
+    {
+        return GetChartData(request, response);
+    }
+    else
+    {
+        return false;
+    }
 }
 
 void WebService::PageHeader(std::ostream& out)
@@ -422,7 +456,16 @@ void WebService::MethodList(std::ostream& out,
                             ServiceBoard* svc_board)
 {
     out << "<h3>Methods of [" << svc_board->ServiceName() << "]</h3><hr>"
-        << "<table border=\"2\">"
+        << "<div id=\"detail\">" ;
+    MethodDetail(out, svc_board);
+    out << "</div>";
+    out << "Notes: all the time in the table is in milliseconds.";
+}
+
+void WebService::MethodDetail(std::ostream& out, 
+                              ServiceBoard* svc_board)
+{
+    out << "<table border=\"2\">"
         << "<tr>"
         << "<th rowspan=\"3\" align=\"left\">Name</th>"
         << "<th colspan=\"6\" align=\"center\">Stat in last second</th>"
@@ -475,7 +518,6 @@ void WebService::MethodList(std::ostream& out,
             << "</tr>";
     }
     out << "</table>";
-    out << "Notes: all the time in the table is in milliseconds.";
 }
 
 void WebService::ErrorPage(std::ostream& out, 
@@ -510,6 +552,7 @@ void WebService::PaintMethod(std::ostream& out, ServiceBoard* svc_board)
         out << "<hr><div id=\"main"<< i << "\" style=\"height:400px\"></div>";
     }
     out << "<script src=\"http://echarts.baidu.com/build/dist/echarts.js\"></script>";
+    out << "<script src=\"http://apps.bdimg.com/libs/jquery/2.1.4/jquery.min.js\"></script>";
     out << "<script type=\"text/javascript\">";
     out << "require.config({";
     out << "paths: {";
@@ -524,9 +567,9 @@ void WebService::PaintMethod(std::ostream& out, ServiceBoard* svc_board)
         std::vector<StatSlot> stats;
         method_board->LatestStats(60, &stats);
         std::ostringstream oss;
-        for (size_t i = 0; i < stats.size(); ++i)
+        for (size_t j = 0; j < stats.size(); ++j)
         {
-            oss << "\"" << i << "\","; 
+            oss << "\"" << j << "\","; 
         }
         out << "xAxis:[{type:'category', data:[" << oss.str() <<  "]}],";
         out << "yAxis:[{type:'value', data:[\"test\"]}],";
@@ -537,7 +580,15 @@ void WebService::PaintMethod(std::ostream& out, ServiceBoard* svc_board)
             oss << rit->succeed_count << ",";
         }
         out << "series : [{\"name\":\"test\", \"type\":\"line\", \"data\":["
-            << oss.str() << "]}]}; myChart.setOption(option); }";
+            << oss.str() << "]}]}; myChart.setOption(option);"; 
+        out << "var chartData = 0; ; clearInterval(timeTicket);timeTicket = setInterval(function (){"
+            << "$.ajax({url:\"/ajaxapi?api=1&servicename=" << svc_board->ServiceName() 
+            << "&methodid=" << i << "\", success: function(data){ chartData = data; }});"
+            << "$.ajax({url:\"/ajaxapi?api=0&servicename=" << svc_board->ServiceName() 
+            << "\", success: function(data){ $('#detail').html(data); }});"
+            << "myChart.addData(["
+            << "[0, chartData, false, false]";
+        out << "]);}, 1000)}";
     }
 
     out << "function DrawCharts(ec) {";
@@ -546,7 +597,73 @@ void WebService::PaintMethod(std::ostream& out, ServiceBoard* svc_board)
         out << "DrawChart" << i << "(ec);";
     }
     out << "}";
-    out << "require(['echarts','echarts/chart/line'],DrawCharts);</script>";
+    out << "require(['echarts','echarts/chart/line'],DrawCharts);";
+    out << "</script>";
+    out << "<script type=\"text/javascript\">var timeTicket;</script>";
+}
+
+bool WebService::GetChartData(const HTTPRequest& request, HTTPResponse& response)
+{
+    std::ostringstream oss;
+    QueryParams::const_iterator it = request.query_params.find("servicename"); 
+    if (it == request.query_params.end())
+    {
+        return false;
+    }
+    const std::string& name = it->second;
+    ServicePoolPtr service_pool = _service_pool.lock();
+    if (!service_pool)
+    {
+        return false;
+    }
+    ServiceBoard* svc_board = service_pool->FindService(name);
+    if (svc_board == NULL)
+    {
+        return false;
+    }
+    const std::string& id = request.query_params.find("methodid")->second;
+    std::stringstream ss;
+    ss << id;
+    int method_id = -1;
+    ss >> method_id;
+    int method_count = svc_board->Descriptor()->method_count();
+    if (method_id < 0 || method_id >= method_count)
+    {
+        return false;
+    }
+
+    MethodBoard* method_board = svc_board->Method(method_id);
+    std::vector<StatSlot> stats;
+    method_board->LatestStats(1, &stats);
+    ss.str("");
+    ss.clear();
+    ss << stats[0].succeed_count;
+    response.content = ss.str();
+    return true;
+}
+
+bool WebService::GetTableData(const HTTPRequest& request, HTTPResponse& response)
+{
+    std::ostringstream oss;
+    QueryParams::const_iterator it = request.query_params.find("servicename"); 
+    if (it == request.query_params.end())
+    {
+        return false;
+    }
+    const std::string& name = it->second;
+    ServicePoolPtr service_pool = _service_pool.lock();
+    if (!service_pool)
+    {
+        return false;
+    }
+    ServiceBoard* svc_board = service_pool->FindService(name);
+    if (svc_board == NULL)
+    {
+        return false;
+    }
+    MethodDetail(oss, svc_board);
+    response.content = oss.str();
+    return true;
 }
 
 } // namespace pbrpc
