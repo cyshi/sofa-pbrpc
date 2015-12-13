@@ -560,8 +560,9 @@ void WebService::PaintMethod(std::ostream& out, ServiceBoard* svc_board)
 
     for (int i = 0; i < method_count; ++i)
     {
+        out << "var myChart" << i << ";";
         out << "function DrawChart" << i << "(ec)";
-        out << "{var myChart = ec.init(document.getElementById('main" << i << "'));";
+        out << "{myChart" << i << " = ec.init(document.getElementById('main" << i << "'));";
         out << "var option = {";
         MethodBoard* method_board = svc_board->Method(i);
         std::vector<StatSlot> stats;
@@ -580,15 +581,7 @@ void WebService::PaintMethod(std::ostream& out, ServiceBoard* svc_board)
             oss << rit->succeed_count << ",";
         }
         out << "series : [{\"name\":\"test\", \"type\":\"line\", \"data\":["
-            << oss.str() << "]}]}; myChart.setOption(option);"; 
-        out << "var chartData = 0; ; clearInterval(timeTicket);timeTicket = setInterval(function (){"
-            << "$.ajax({url:\"/ajaxapi?api=1&servicename=" << svc_board->ServiceName() 
-            << "&methodid=" << i << "\", success: function(data){ chartData = data; }});"
-            << "$.ajax({url:\"/ajaxapi?api=0&servicename=" << svc_board->ServiceName() 
-            << "\", success: function(data){ $('#detail').html(data); }});"
-            << "myChart.addData(["
-            << "[0, chartData, false, false]";
-        out << "]);}, 1000)}";
+            << oss.str() << "]}]}; myChart" << i << ".setOption(option);}"; 
     }
 
     out << "function DrawCharts(ec) {";
@@ -599,7 +592,18 @@ void WebService::PaintMethod(std::ostream& out, ServiceBoard* svc_board)
     out << "}";
     out << "require(['echarts','echarts/chart/line'],DrawCharts);";
     out << "</script>";
-    out << "<script type=\"text/javascript\">var timeTicket;</script>";
+    out << "<script type=\"text/javascript\">var timeTicket;";
+    out << "clearInterval(timeTicket);timeTicket = setInterval(function (){";
+    for (int i = 0; i < method_count; ++i)
+    {
+        out << "$.ajax({url:\"/ajaxapi?api=1&servicename=" << svc_board->ServiceName() 
+            << "&methodid=" << i << "\", success: function(data){myChart"
+            << i <<".addData([[0,data,false,false]]])}});";
+    }
+    out << "$.ajax({url:\"/ajaxapi?api=0&servicename=" << svc_board->ServiceName() 
+        << "\", success: function(data){ $('#detail').html(data); }});"
+        << "}, 1000);";
+    out << "</script>";
 }
 
 bool WebService::GetChartData(const HTTPRequest& request, HTTPResponse& response)
