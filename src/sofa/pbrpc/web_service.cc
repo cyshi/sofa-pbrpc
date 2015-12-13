@@ -593,12 +593,13 @@ void WebService::PaintMethod(std::ostream& out, ServiceBoard* svc_board)
     out << "require(['echarts','echarts/chart/line'],DrawCharts);";
     out << "</script>";
     out << "<script type=\"text/javascript\">var timeTicket;";
-    out << "clearInterval(timeTicket);timeTicket = setInterval(function (){";
+    out << "clearInterval(timeTicket);timeTicket = setInterval(function(){";
     for (int i = 0; i < method_count; ++i)
     {
         out << "$.ajax({url:\"/ajaxapi?api=1&servicename=" << svc_board->ServiceName() 
             << "&methodid=" << i << "\", success: function(data){myChart"
-            << i <<".addData([[0,data,false,false]]])}});";
+            << i <<".addData([[0,data,false,false]])}, error: function(){myChart" 
+            << i <<".addData([[0,0,false,false]])}});";
     }
     out << "$.ajax({url:\"/ajaxapi?api=0&servicename=" << svc_board->ServiceName() 
         << "\", success: function(data){ $('#detail').html(data); }});"
