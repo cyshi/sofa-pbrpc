@@ -147,6 +147,18 @@ public:
         stat_out->set_slot_id(stat.slot_id);
     }
 
+    void LatestStats(int slot_count, std::vector<StatSlot>* stat_out)
+    {
+        SCHECK(slot_count > 0 && slot_count <= STAT_SLOT_COUNT);
+        SCHECK(stat_out != NULL);
+        int index = (_slot_index == 0 ? STAT_SLOT_COUNT - 1 : _slot_index - 1);
+        while (slot_count > 0) {
+            stat_out->push_back(_stat_slots[index]);
+            --slot_count;
+            index = (index == 0 ? STAT_SLOT_COUNT - 1 : index - 1);
+        }
+    }
+
 private:
     ServiceBoard* _service_board;
     const google::protobuf::MethodDescriptor* _desc;

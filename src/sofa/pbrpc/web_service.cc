@@ -279,6 +279,7 @@ bool WebService::DefaultService(const HTTPRequest& request,
     oss << "<a href=\"/\">&lt;&lt;&lt;&lt;back to Home</a><br>"
         << "<a href=\"/services\">&lt;&lt;&lt;&lt;back to Services</a>";
     MethodList(oss, svc_board);
+    PaintMethod(oss, svc_board);
     PageFooter(oss);
     response.content = oss.str();
     return true;
@@ -499,6 +500,53 @@ ServletMapPtr WebService::GetServletPtr()
 {
     ScopedLocker<FastLock> _(_servlet_map_lock);
     return _servlet_map;
+}
+
+void WebService::PaintMethod(std::ostream& out, ServiceBoard* svc_board)
+{
+    int method_count = svc_board->Descriptor()->method_count();
+    for (int i = 0; i < method_count; ++i)
+    {
+        out << "<hr><div id=\"main"<< i << "\" style=\"height:400px\"></div>";
+    }
+    out << "<script src=\"http://echarts.baidu.com/build/dist/echarts.js\"></script>";
+    out << "<script type=\"text/javascript\">";
+    out << "require.config({";
+    out << "paths: {";
+    out << "echarts: 'http://echarts.baidu.com/build/dist'}});";
+
+    for (int i = 0; i < method_count; ++i)
+    {
+        out << "function DrawChart" << i << "(ec)";
+        out << "{var myChart = ec.init(document.getElementById('main" << i << "'));";
+        out << "var option = {";
+        MethodBoard* method_board = svc_board->Method(i);
+        std::vector<StatSlot> stats;
+        method_board->LatestStats(60, &stats);
+        std::ostringstream oss;
+        for (size_t i = 0; i < stats.size(); ++i)
+        {
+            oss << "\"" << i << "\","; 
+        }
+        out << "xAxis:[{type:'category', data:[" << oss.str() <<  "]}],";
+        out << "yAxis:[{type:'value', data:[\"test\"]}],";
+        oss.str("");
+        std::vector<StatSlot>::reverse_iterator rit = stats.rbegin();
+        for (; rit != stats.rend(); ++rit)
+        {
+            oss << rit->succeed_count << ",";
+        }
+        out << "series : [{\"name\":\"test\", \"type\":\"line\", \"data\":["
+            << oss.str() << "]}]}; myChart.setOption(option); }";
+    }
+
+    out << "function DrawCharts(ec) {";
+    for (int i = 0; i < method_count; ++i)
+    {
+        out << "DrawChart" << i << "(ec);";
+    }
+    out << "}";
+    out << "require(['echarts','echarts/chart/line'],DrawCharts);</script>";
 }
 
 } // namespace pbrpc

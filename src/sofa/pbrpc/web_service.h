@@ -73,6 +73,8 @@ private:
 
     void ListServlet(std::ostream& out);
 
+    void PaintMethod(std::ostream& out, ServiceBoard* svc_board);
+
     static void FormatPath(std::string& path);
 
     ServletMapPtr GetServletPtr();
